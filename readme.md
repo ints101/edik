@@ -30,7 +30,10 @@ Installation:<br>
 <br>
 <br>
 Screenshot: <br>
+
 <br>
+
+![sample](https://github.com/user-attachments/assets/d4b5afd2-4eeb-4123-a817-efb1a7605271)
 
 
 
