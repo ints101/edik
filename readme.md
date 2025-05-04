@@ -7,6 +7,7 @@ Usage:<br>
 	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Example CSV output: *tsla_30days_insider_trades.csv*<br>
 	3. Specify the number of past days of filings to include(Default: 30 days).<br>
 <br>
+<br>
 The output includes:<br>
 <br>
    - Transaction Date<br>
@@ -18,6 +19,7 @@ The output includes:<br>
    - Insiders Title<br>
 <br>
 Installation:<br>
+<br>
 
 ```bash
         git clone https://github.com/ints101/edik
