@@ -1,4 +1,4 @@
-This Python script fetches recent insider trading activity (Forms 3, 4, 5) for any publicly traded U.S. company using data from the SEC EDGAR system.<br>
+This Python script fetches recent insider trading activity (Forms 4, 5) for any publicly traded U.S. company using data from the SEC EDGAR system.<br>
 <br>
 Usage:<br>
 <br>
