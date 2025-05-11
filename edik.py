@@ -47,7 +47,7 @@ def get_filing(cik):                                                   # gets a 
     client.close()
     respobj = filings.json()
     recent0 = pd.DataFrame(respobj["filings"]["recent"])               # creates DataFrame of the metadata
-    insider = recent0[recent0["form"].isin(["3", "4", "5"])]
+    insider = recent0[recent0["form"].isin(["4", "5"])]
     return insider
 
 
@@ -55,19 +55,31 @@ def get_filing(cik):                                                   # gets a 
 
 
 def get_trades(row, cik):                                                 # generator: yield one dict per <nonDerivativeTransaction>
-    url  = get_xml_url(row, cik)
-    raw  = requests.get(url, headers=headers, timeout=40).content
+    url = get_xml_url(row, cik)
+
+    print(url)
+
+    raw  = requests.get(url, headers=headers, timeout=40).content         # get .xml file
     raw  = sanitize_bytes(raw)                                            # strip bad control bytes
  
 
     tree = ET.fromstring(raw)                                             # parse the .xml
+
     txn = tree.findall('.//{*}nonDerivativeTransaction')                  # try namespace .xml
     if not txn:                                  
         txn = tree.findall('.//nonDerivativeTransaction')                 # try non-namespace
- 
+
+
+    txo = tree.findall('.//{*}derivativeTransaction')                  # try namespace .xml
+    if not txo:                                  
+        txo = tree.findall('.//derivativeTransaction')                 # try non-namespace
+    
+
     for t in txn:                                                         
         yield {
-            "Date"      : t.findtext('.//{*}transactionDate/{*}value')
+            "Type"      : "non-Derivative",
+
+            "Date"      :  t.findtext('.//{*}transactionDate/{*}value')
                            or t.findtext('.//transactionDate/value'),
             "Code"      : t.findtext('.//{*}transactionCoding/{*}transactionCode')
                            or t.findtext('.//transactionCoding/transactionCode'),
@@ -81,12 +93,39 @@ def get_trades(row, cik):                                                 # gene
                            or tree.findtext('.//reportingOwner/reportingOwnerId/rptOwnerName'),
             "Title"     : tree.findtext(".//{*}reportingOwnerRelationship/{*}officerTitle") 
                            or tree.findtext(".//reportingOwnerRelationship/officerTitle"),
-            
+            "link"      : url,
         }
- 
+   
+     
+    for s in txo:                                                         
+        yield {
+            "Type"      : "Derivative",
+
+            "Date"      : s.findtext('.//{*}transactionDate/{*}value')
+                           or s.findtext('.//transactionDate/value'),
+            "Code"      : s.findtext('.//{*}transactionCoding/{*}transactionCode')
+                           or s.findtext('.//transactionCoding/transactionCode'),
+            "Shares"    : s.findtext('.//{*}transactionShares/{*}value')
+                           or s.findtext('.//transactionShares/value'),
+            "Exercise Price"     : s.findtext('.//{*}conversionOrExercisePrice/{*}value')
+                           or s.findtext('.//conversionOrExercisePrice/value'),
+            "Security"  : s.findtext('.//{*}securityTitle/{*}value')
+                           or s.findtext('.//securityTitle/value'),
+            "OwnedAfter": s.findtext('.//{*}sharesOwnedFollowingTransaction/{*}value')
+                           or s.findtext('.//sharesOwnedFollowingTransaction/value'),
+            "Name"      : tree.findtext('.//{*}reportingOwner/{*}reportingOwnerId/{*}rptOwnerName')
+                           or tree.findtext('.//reportingOwner/reportingOwnerId/rptOwnerName'),
+            "Title"     : tree.findtext(".//{*}reportingOwnerRelationship/{*}officerTitle") 
+                           or tree.findtext(".//reportingOwnerRelationship/officerTitle"),
+            "ExpirationDate" : s.findtext('.//{*}expirationDate/{*}value')
+                           or s.findtext('.//expirationDate/value'),
+            "link"      : url,
+        }
 
 
     time.sleep(0.11)                  # < 10 req/s cap SEC requirement
+    
+
 
 
 
@@ -103,7 +142,7 @@ def sanitize_bytes(raw: bytes) -> bytes:                             # sanitize 
 
 
 
-def get_xml_url(row,cik):                                           # downloads wk-form .xml
+def get_xml_url(row,cik):                                           # get .xml url
     cik = cik.lstrip("0")                                           # remove leading zeroes from cik
     acc = row["accessionNumber"].replace("-", "")                   # format acc nr.
     base = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/"  # root directory for filings
@@ -115,6 +154,7 @@ def get_xml_url(row,cik):                                           # downloads 
 
     best = next((x for x in xmls if "form4" in x.lower()), xmls[0])  # prefer any file whose name contains "form4"
     url = urljoin(base, best)                                        # build absolute URL 
+    print(url)
     return url
 
 
@@ -131,16 +171,37 @@ insider = get_filing(cik)                           # gets a list of filings rea
 cutoff = (now - timedelta(days=days)).strftime("%Y-%m-%d")               # filter by date 
 recent = insider[insider["filingDate"] >= cutoff]  
 
+print("\nLinks:")
+
 trades = pd.DataFrame(                                                   # build DataFrame from generator
     t for _, row in recent.iterrows()
       for t in get_trades(row, cik)
 )
-print(trades)
 
-if export == "Y":                                                        # export to .csv
-    date = now.strftime("%m_%d_%Y")
-    trades.to_csv(ticker+"_"+str(days)+"days"+"_insider_trades.csv", index=False)
+if trades.empty:
+    print(f"No Form 4/5 activity for {ticker.upper()} in the last {days} days.")
 
+else:
+    non_deriv = trades[trades["Type"] == "non-Derivative"].copy()
+    deriv     = trades[trades["Type"] == "Derivative"].copy()   
+    non_cols = ["Date", "Code", "Shares", "Price",
+    "OwnedAfter", "Name"]
+    der_cols = ["Date", "Code", "Security", "Shares", "Exercise Price", "ExpirationDate", 
+    "OwnedAfter", "Name"]
+    non_block = non_deriv[non_cols]
+    der_block = deriv[der_cols]
+    print("\n---------------non-derivative trades----------------")
+    print(non_block.to_string(index=False))
+    print("\n----------------derivative trades--------------------")
+    print(der_block.to_string(index=False))
+
+
+
+
+    if export == "Y":                                                        # export to .csv
+        date = now.strftime("%m_%d_%Y")
+        non_block.to_csv(ticker+"_"+str(days)+"days"+"_insider_trades.csv", index=False)
+        der_block.to_csv(ticker+"_"+str(days)+"days"+"_insiderder_trades.csv", index=False)
 
 
 
